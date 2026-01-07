@@ -274,7 +274,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 
 	// Initialize device binding store and middleware
 	cfg.DeviceBinding.SetDefaults()
-	if deviceStore, err := device.NewStore(cfg.AuthDir); err != nil {
+	if deviceStore, err := device.NewStore("."); err != nil {
 		log.Warnf("device-binding: failed to initialize store: %v", err)
 	} else {
 		s.deviceStore = deviceStore

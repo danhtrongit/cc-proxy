@@ -279,9 +279,10 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	} else {
 		s.deviceStore = deviceStore
 		s.deviceMiddleware = device.NewMiddleware(deviceStore, device.Config{
-			Enabled:    cfg.DeviceBinding.Enabled,
-			MaxDevices: cfg.DeviceBinding.MaxDevices,
-			HeaderName: cfg.DeviceBinding.HeaderName,
+			Enabled:             cfg.DeviceBinding.Enabled,
+			MaxDevices:          cfg.DeviceBinding.MaxDevices,
+			HeaderName:          cfg.DeviceBinding.HeaderName,
+			ConcurrentThreshold: time.Duration(cfg.DeviceBinding.ConcurrentThreshold) * time.Second,
 		})
 		s.deviceHandler = device.NewHandler(deviceStore)
 	}

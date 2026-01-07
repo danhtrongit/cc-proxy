@@ -99,11 +99,29 @@ func (s *Store) Save(apiKey, deviceID, deviceType string) error {
 }
 
 // UpdateLastSeen updates the last_seen timestamp and persists
-func (s *Store) UpdateLastSeen(apiKey string) error {
+func (s *Store) UpdateLastSeen(apiKey string, currentIP string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.bindings.UpdateLastSeen(apiKey)
+	s.bindings.UpdateLastSeen(apiKey, currentIP)
+	return s.save()
+}
+
+// Ban marks an API key as banned and persists
+func (s *Store) Ban(apiKey, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.bindings.Ban(apiKey, reason)
+	return s.save()
+}
+
+// Unban removes ban from an API key and persists
+func (s *Store) Unban(apiKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.bindings.Unban(apiKey)
 	return s.save()
 }
 

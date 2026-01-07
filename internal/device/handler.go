@@ -96,9 +96,56 @@ func (h *Handler) DeleteBinding(c *gin.Context) {
 	})
 }
 
+// UnbanKey removes ban from an API key
+// POST /v0/management/device-bindings/unban?api-key=xxx
+func (h *Handler) UnbanKey(c *gin.Context) {
+	apiKey := strings.TrimSpace(c.Query("api-key"))
+
+	if apiKey == "" {
+		c.JSON(400, gin.H{
+			"error":   "missing_parameter",
+			"message": "api-key parameter is required",
+		})
+		return
+	}
+
+	binding, exists := h.store.Get(apiKey)
+	if !exists {
+		c.JSON(404, gin.H{
+			"error":   "not_found",
+			"message": "No device binding found for this API key",
+		})
+		return
+	}
+
+	if !binding.Banned {
+		c.JSON(400, gin.H{
+			"error":   "not_banned",
+			"message": "This API key is not banned",
+		})
+		return
+	}
+
+	if err := h.store.Unban(apiKey); err != nil {
+		log.Errorf("device-binding: failed to unban key %s: %v", MaskKey(apiKey), err)
+		c.JSON(500, gin.H{
+			"error":   "internal_error",
+			"message": "Failed to unban API key",
+		})
+		return
+	}
+
+	log.Infof("device-binding: unbanned key %s by admin", MaskKey(apiKey))
+	c.JSON(200, gin.H{
+		"message": "API key unbanned successfully",
+		"api_key": apiKey,
+	})
+}
+
 // RegisterRoutes registers device binding routes on a router group
 // The group should already have management authentication middleware applied
 func (h *Handler) RegisterRoutes(group *gin.RouterGroup) {
 	group.GET("/device-bindings", h.GetBindings)
 	group.DELETE("/device-bindings", h.DeleteBinding)
+	group.POST("/device-bindings/unban", h.UnbanKey)
 }

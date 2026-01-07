@@ -2,16 +2,21 @@ package device
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
 
+// Default threshold for concurrent usage detection (60 seconds)
+const defaultConcurrentThreshold = 60 * time.Second
+
 // Config holds device binding configuration
 type Config struct {
-	Enabled    bool
-	MaxDevices int
-	HeaderName string
+	Enabled             bool
+	MaxDevices          int
+	HeaderName          string
+	ConcurrentThreshold time.Duration // Time threshold for detecting concurrent usage from different IPs
 }
 
 // Middleware checks device bindings for API requests
@@ -28,6 +33,9 @@ func NewMiddleware(store *Store, config Config) *Middleware {
 	}
 	if config.HeaderName == "" {
 		config.HeaderName = "X-Device-ID"
+	}
+	if config.ConcurrentThreshold <= 0 {
+		config.ConcurrentThreshold = defaultConcurrentThreshold
 	}
 
 	return &Middleware{
@@ -88,6 +96,7 @@ func (m *Middleware) Handler() gin.HandlerFunc {
 
 		// Check existing binding
 		binding, exists := m.store.Get(apiKey)
+		currentIP := c.ClientIP()
 
 		if !exists {
 			// First use: auto-register device
@@ -102,24 +111,42 @@ func (m *Middleware) Handler() gin.HandlerFunc {
 			return
 		}
 
-		// Check if device matches
-		if binding.DeviceID == deviceID {
-			// Match: update last_seen and allow
-			if err := m.store.UpdateLastSeen(apiKey); err != nil {
-				log.Warnf("device-binding: failed to update last_seen for key %s: %v", MaskKey(apiKey), err)
-			}
-			c.Next()
+		// Check if banned
+		if binding.Banned {
+			log.Warnf("device-binding: rejected banned key %s, reason: %s",
+				MaskKey(apiKey), binding.BanReason)
+			c.AbortWithStatusJSON(403, gin.H{
+				"error":   "api_key_banned",
+				"message": "This API key has been banned: " + binding.BanReason,
+			})
 			return
 		}
 
-		// Device mismatch: reject
-		log.Warnf("device-binding: rejected request for key %s: expected %s, got %s",
-			MaskKey(apiKey), binding.DeviceID, deviceID)
+		// Check for concurrent usage from different IPs
+		timeSinceLastSeen := time.Since(binding.LastSeen)
+		if binding.LastIP != "" && binding.LastIP != currentIP && timeSinceLastSeen < m.config.ConcurrentThreshold {
+			// Different IP within short time = suspicious concurrent usage
+			reason := "Concurrent usage detected: different IP within " + timeSinceLastSeen.String()
+			log.Warnf("device-binding: BANNED key %s - %s (last_ip=%s, current_ip=%s, last_seen=%s ago)",
+				MaskKey(apiKey), reason, binding.LastIP, currentIP, timeSinceLastSeen)
 
-		c.AbortWithStatusJSON(403, gin.H{
-			"error":   "device_mismatch",
-			"message": "This API key is bound to another device. Contact admin to reset.",
-		})
+			if err := m.store.Ban(apiKey, reason); err != nil {
+				log.Errorf("device-binding: failed to ban key %s: %v", MaskKey(apiKey), err)
+			}
+
+			c.AbortWithStatusJSON(403, gin.H{
+				"error":   "concurrent_usage_detected",
+				"message": "Suspicious concurrent usage detected. API key has been banned. Contact admin to unban.",
+			})
+			return
+		}
+
+		// Update last seen with current IP (allow IP changes over time)
+		if err := m.store.UpdateLastSeen(apiKey, currentIP); err != nil {
+			log.Warnf("device-binding: failed to update last_seen for key %s: %v", MaskKey(apiKey), err)
+		}
+
+		c.Next()
 	}
 }
 

@@ -3,7 +3,7 @@
 host: ""
 
 # Server port
-port: 8317
+port: 3838
 
 # TLS settings for HTTPS. When enabled, the server listens with the provided certificate and key.
 tls:
@@ -11,11 +11,16 @@ tls:
   cert: ""
   key: ""
 
+device-binding:
+  enabled: true
+  max-devices: 1
+  header-name: "X-Device-ID"
+
 # Management API settings
 remote-management:
   # Whether to allow remote (non-localhost) management access.
   # When false, only localhost can access management endpoints (a key is still required).
-  allow-remote: false
+  allow-remote: true
 
   # Management key. If a plaintext value is provided here, it will be hashed on startup.
   # All management requests (even from localhost) require this key.

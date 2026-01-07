@@ -156,6 +156,10 @@ type DeviceBindingConfig struct {
 	MaxDevices int `yaml:"max-devices" json:"max-devices"`
 	// HeaderName is the HTTP header name for client-provided device ID. Default: "X-Device-ID".
 	HeaderName string `yaml:"header-name" json:"header-name"`
+	// ConcurrentThreshold is the time window (in seconds) for detecting concurrent usage from different IPs.
+	// If requests come from different IPs within this time window, the key will be banned.
+	// Default: 60 seconds. Set to 0 to disable concurrent usage detection.
+	ConcurrentThreshold int `yaml:"concurrent-threshold" json:"concurrent-threshold"`
 }
 
 // SetDefaults applies default values to DeviceBindingConfig.
@@ -165,6 +169,9 @@ func (c *DeviceBindingConfig) SetDefaults() {
 	}
 	if c.HeaderName == "" {
 		c.HeaderName = "X-Device-ID"
+	}
+	if c.ConcurrentThreshold <= 0 {
+		c.ConcurrentThreshold = 60
 	}
 }
 

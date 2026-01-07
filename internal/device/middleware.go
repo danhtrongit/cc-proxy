@@ -56,6 +56,20 @@ func (m *Middleware) Handler() gin.HandlerFunc {
 
 		// Extract device ID
 		deviceID, deviceType := m.extractDeviceID(c)
+
+		// Log request details for debugging
+		log.Debugf("device-binding: incoming request - key=%s, device_id=%s, type=%s, client_ip=%s, header_%s=%s, user_agent=%s, method=%s, path=%s",
+			MaskKey(apiKey),
+			deviceID,
+			deviceType,
+			c.ClientIP(),
+			m.config.HeaderName,
+			c.GetHeader(m.config.HeaderName),
+			c.GetHeader("User-Agent"),
+			c.Request.Method,
+			c.Request.URL.Path,
+		)
+
 		if deviceID == "" {
 			// Shouldn't happen, but fallback to allowing
 			log.Warnf("device-binding: could not extract device ID for key %s", MaskKey(apiKey))

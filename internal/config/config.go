@@ -102,6 +102,9 @@ type Config struct {
 	// Payload defines default and override rules for provider payload parameters.
 	Payload PayloadConfig `yaml:"payload" json:"payload"`
 
+	// DeviceBinding configures device binding restrictions for API keys.
+	DeviceBinding DeviceBindingConfig `yaml:"device-binding" json:"device-binding"`
+
 	legacyMigrationPending bool `yaml:"-" json:"-"`
 }
 
@@ -143,6 +146,26 @@ type RoutingConfig struct {
 	// Strategy selects the credential selection strategy.
 	// Supported values: "round-robin" (default), "fill-first".
 	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+}
+
+// DeviceBindingConfig configures device binding restrictions for API keys.
+type DeviceBindingConfig struct {
+	// Enabled toggles device binding enforcement. Default: false.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// MaxDevices is the maximum number of devices allowed per API key. Default: 1.
+	MaxDevices int `yaml:"max-devices" json:"max-devices"`
+	// HeaderName is the HTTP header name for client-provided device ID. Default: "X-Device-ID".
+	HeaderName string `yaml:"header-name" json:"header-name"`
+}
+
+// SetDefaults applies default values to DeviceBindingConfig.
+func (c *DeviceBindingConfig) SetDefaults() {
+	if c.MaxDevices <= 0 {
+		c.MaxDevices = 1
+	}
+	if c.HeaderName == "" {
+		c.HeaderName = "X-Device-ID"
+	}
 }
 
 // ModelNameMapping defines a model ID mapping for a specific channel.

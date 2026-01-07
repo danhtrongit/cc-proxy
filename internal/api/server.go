@@ -24,6 +24,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/api/modules"
 	ampmodule "github.com/router-for-me/CLIProxyAPI/v6/internal/api/modules/amp"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/device"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/managementasset"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
@@ -154,6 +155,11 @@ type Server struct {
 	// ampModule is the Amp routing module for model mapping hot-reload
 	ampModule *ampmodule.AmpModule
 
+	// deviceStore and deviceMiddleware handle device binding restrictions
+	deviceStore      *device.Store
+	deviceMiddleware *device.Middleware
+	deviceHandler    *device.Handler
+
 	// managementRoutesRegistered tracks whether the management routes have been attached to the engine.
 	managementRoutesRegistered atomic.Bool
 	// managementRoutesEnabled controls whether management endpoints serve real handlers.
@@ -266,6 +272,20 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	s.mgmt.SetLogDirectory(logDir)
 	s.localPassword = optionState.localPassword
 
+	// Initialize device binding store and middleware
+	cfg.DeviceBinding.SetDefaults()
+	if deviceStore, err := device.NewStore(cfg.AuthDir); err != nil {
+		log.Warnf("device-binding: failed to initialize store: %v", err)
+	} else {
+		s.deviceStore = deviceStore
+		s.deviceMiddleware = device.NewMiddleware(deviceStore, device.Config{
+			Enabled:    cfg.DeviceBinding.Enabled,
+			MaxDevices: cfg.DeviceBinding.MaxDevices,
+			HeaderName: cfg.DeviceBinding.HeaderName,
+		})
+		s.deviceHandler = device.NewHandler(deviceStore)
+	}
+
 	// Setup routes
 	s.setupRoutes()
 
@@ -319,6 +339,9 @@ func (s *Server) setupRoutes() {
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
+	if s.deviceMiddleware != nil {
+		v1.Use(s.deviceMiddleware.Handler())
+	}
 	{
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
@@ -331,6 +354,9 @@ func (s *Server) setupRoutes() {
 	// Gemini compatible API routes
 	v1beta := s.engine.Group("/v1beta")
 	v1beta.Use(AuthMiddleware(s.accessManager))
+	if s.deviceMiddleware != nil {
+		v1beta.Use(s.deviceMiddleware.Handler())
+	}
 	{
 		v1beta.GET("/models", geminiHandlers.GeminiModels)
 		v1beta.POST("/models/*action", geminiHandlers.GeminiHandler)
@@ -622,6 +648,11 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.POST("/iflow-auth-url", s.mgmt.RequestIFlowCookieToken)
 		mgmt.POST("/oauth-callback", s.mgmt.PostOAuthCallback)
 		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
+
+		// Device binding management routes
+		if s.deviceHandler != nil {
+			s.deviceHandler.RegisterRoutes(mgmt)
+		}
 	}
 }
 
